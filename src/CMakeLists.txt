@@ -281,5 +281,36 @@ else()
     DESTINATION ${ILANG_INCLUDE_INSTALL_DIR}/ilang/util
   )
 
+  # PPA Estimation header files
+  install(
+    FILES ${ILANG_INCLUDE_BUILD_DIR}/ilang/ppa-estimations/ppa_profile_base.h
+    DESTINATION ${ILANG_INCLUDE_INSTALL_DIR}/ilang/ppa-estimations/
+  )
+
+  install(
+    FILES ${ILANG_INCLUDE_BUILD_DIR}/ilang/ppa-estimations/ppa_profile_const_example.h
+    DESTINATION ${ILANG_INCLUDE_INSTALL_DIR}/ilang/ppa-estimations/
+  )
+
+  install(
+    FILES ${ILANG_INCLUDE_BUILD_DIR}/ilang/ppa-estimations/ppa_profile_simple_example.h
+    DESTINATION ${ILANG_INCLUDE_INSTALL_DIR}/ilang/ppa-estimations/
+  )
+
+  install(
+    FILES ${ILANG_INCLUDE_BUILD_DIR}/ilang/ppa-estimations/ppa_model_registrar.h
+    DESTINATION ${ILANG_INCLUDE_INSTALL_DIR}/ilang/ppa-estimations/
+  )
+
+  install(
+    FILES ${ILANG_INCLUDE_BUILD_DIR}/ilang/ppa-estimations/ppa_hardware_block.h
+    DESTINATION ${ILANG_INCLUDE_INSTALL_DIR}/ilang/ppa-estimations/
+  )
+
+  install(
+    FILES ${ILANG_INCLUDE_BUILD_DIR}/ilang/ppa-estimations/ppa_callbacks.h
+    DESTINATION ${ILANG_INCLUDE_INSTALL_DIR}/ilang/ppa-estimations/
+  )
+
 endif()
 

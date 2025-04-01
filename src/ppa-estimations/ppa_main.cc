@@ -10,12 +10,12 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
-#include <exception>
 #include <fstream>
 #include <ilang/ppa-estimations/ppa.h>
 #include <memory>
 #include <unordered_map>
 
+// #include "ilang/ilang++.h"
 #include "ilang/ppa-estimations/ppa_callbacks.h"
 #include "ilang/ppa-estimations/ppa_hardware_block.h"
 #include "ilang/ppa-estimations/ppa_profile_base.h"
@@ -538,8 +538,22 @@ double PPAAnalyzer::FirstSchedule
         srt->is_bv() ? srt->bit_width() :
         /*srt->is_mem() ?*/ srt->data_width();
 
-    const PPAProfile_ptr & prof = 
-        m_registrar.getMatchingProfile_LowestBitwidth(hbInd, bitwidth);
+    PPAProfile_ptr prof;
+    if (hbInd == bApplyFunc)
+    {
+        
+        ExprOpAppFunc & exprFunc = dynamic_cast<ExprOpAppFunc&>(*expr);
+        const FuncPtr & fptr = exprFunc.func();
+        prof = m_registrar.getMatchingProfile_UninterpFunc(fptr);
+        
+    }
+    else
+    {
+        prof = m_registrar
+            .getMatchingProfile_LowestBitwidth(hbInd, bitwidth);
+    }
+
+
 
     int profileIndex = prof->getGlobalIndex();
 
@@ -716,7 +730,9 @@ void PPAAnalyzer::PerformanceGet
 
         for (size_t i = 0; i < e->arg_num(); i++)
         {
-            double currArgReadyTime = ppaData.m_endTimes.at(e->arg(i)->name().id());
+            double currArgReadyTime = 
+                ppaData.m_endTimes.at(e->arg(i)->name().id());
+
             if (currArgReadyTime > maximumArgReadyTime)
             {
                 maximumArgReadyTime = currArgReadyTime; 
@@ -738,9 +754,20 @@ void PPAAnalyzer::PerformanceGet
             PPA_Callbacks::s_m_bitwidth = bitwidth;
 
             AstUidExprOp exprOp = asthub::GetUidExprOp(e);
+            HardwareBlock_t hbInd = ExprToHardwareBlocks(e);
 
-            PPAProfile_ptr prof = m_registrar.getMatchingProfile_LowestBitwidth
-                (ExprToHardwareBlocks(e), bitwidth);
+            PPAProfile_ptr prof;
+            if (hbInd == bApplyFunc)
+            {
+                ExprOpAppFunc & exprFunc = dynamic_cast<ExprOpAppFunc&>(*e);
+                const FuncPtr & fptr = exprFunc.func();
+                prof = m_registrar.getMatchingProfile_UninterpFunc(fptr);
+            }
+            else
+            {
+                prof = m_registrar.getMatchingProfile_LowestBitwidth
+                    (ExprToHardwareBlocks(e), bitwidth);
+            }
 
             // TODO : I don't love the way this deals with memory, think ab it.
 
@@ -809,7 +836,7 @@ void PPAAnalyzer::PerformanceGet
         }
 
         double startTime = e->is_op()
-            ? FirstSchedule(e, provisionalStartTime, ppaData) 
+            ? FirstSchedule(e, provisionalStartTime, ppaData)
             : maximumArgReadyTime;
 
         // std::cout << e->name() << '\n';
@@ -830,7 +857,8 @@ void PPAAnalyzer::PerformanceGet
     [&ppaData, &determineTiming, &dfvpp](const ExprPtr & e) -> void
     {
 
-        if (ppaData.m_endTimes.find(e->name().id()) != ppaData.m_endTimes.end())
+        if (ppaData.m_endTimes.find(e->name().id()) 
+            != ppaData.m_endTimes.end())
         {
             return;
         }
@@ -991,13 +1019,14 @@ HardwareBlock_t PPAAnalyzer::ExprToHardwareBlocks(const ExprPtr & expr)
     // I suspect this should never happen, but just in case
     if (numConstantArguments == numArguments)
     {
-        ILA_WARN << "Expression with only constant arguments found: "
-            << expr->name().str();
+        // ILA_WARN << "Expression with only constant arguments found: "
+        //     << expr->name().str();
 
         return bNoHardware;
     }
 
     AstUidExprOp op = asthub::GetUidExprOp(expr);
+
     if (numConstantArguments == 0)
     {
         return UidToHardwareBlock(op);
@@ -1148,7 +1177,7 @@ HardwareBlock_t PPAAnalyzer::ExprToHardwareBlocks(const ExprPtr & expr)
         return bMemory;
 
     case kApplyFunc:
-        return bNoHardware;
+        return bApplyFunc;
     default:
         return bInvalid;
     }
@@ -1202,7 +1231,7 @@ HardwareBlock_t PPAAnalyzer::UidToHardwareBlock(AstUidExprOp op)
     case kStore:
         return bMemory;
     case kApplyFunc:
-        return bNoHardware;
+        return bApplyFunc;
     default:
         return bInvalid;
     }
@@ -1213,41 +1242,48 @@ HardwareBlock_t PPAAnalyzer::UidToHardwareBlock(AstUidExprOp op)
 void PPAAnalyzer::PrintHardwareBlocks
 (
     PPAAnalysisData & ppaData,
-    const std::string & label
+    const std::string & label,
+    int numcycles
 )
 {
     std::cout << label << ':' << std::endl;
 
-    size_t numCycles = ppaData.m_latestTimeInCycles;
+    size_t numCycles = (numcycles < 0) ? ppaData.m_latestTimeInCycles : numcycles;
 
     size_t registrarSize = m_registrar.getSize();
 
     for (size_t i = 0; i < numCycles; i++)
     {
+        std::cout << "Cycle: " << i << "\n";
         for (int j = 0; j < registrarSize; j++)
         {
-            // How many blocks to show. With no hardware and fake memory 
-            // profile first, followed by the blocks in the order they are 
-            // registered
-            if (j > 15)
-            {
-                continue;
-            }
-            
+            HardwareBlock_t hb = m_registrar.blockTypeFromIndex(j);
+            PPAProfile_ptr prof = m_registrar.profileFromIndex(j);
+
             int numToPrint = (ppaData.m_hardwareUseTracker.at(j).size() <= i) 
                 ? 0 : ppaData.m_hardwareUseTracker.at(j).at(i);
 
-            std::cout << ' ' << numToPrint;
+            if (numToPrint != 0)
+            {
+                std::cout << "\t" << hardwareBlockToString(hb) << " bw: "
+                    << prof->getMaximumBitwidth() << " #: " << numToPrint
+                    << "\n";
+            }
         }
 
         for (auto state : absknob::GetSttTree(m_ila))
         {
             if (state->is_mem())
             {
-                int numToPrint = (ppaData.m_exprToMemUseByCycle.at(state)->size() <= i)
-                    ? 0 : ppaData.m_exprToMemUseByCycle.at(state)->at(i);
+                int numToPrint = 
+                    (ppaData.m_exprToMemUseByCycle.at(state)->size() <= i)
+                    ? 0 
+                    : ppaData.m_exprToMemUseByCycle.at(state)->at(i);
 
-                std::cout << ' ' << numToPrint;
+                
+
+                std::cout << '\t' << "Mem: " << state->name().str() << " "
+                    << numToPrint;
             }
         }
 
@@ -1286,11 +1322,11 @@ const ExprPtr * findDuplicates
     {
         for (int i = 0; i < e->arg_num(); i++)
         {
-            key |= (e->arg(i)->name().id() & 0x7ffffUL) << (i * 19);
+            key |= (e->arg(i)->name().id() & 0x7ffffUL) << (38 - (i * 19));
         }
         for (int i = 0; i < e->param_num(); i++)
         {
-            key |= (e->param(i) & 0x7ffffUL) << (38 - (i * 19));
+            key |= (e->param(i) & 0x7ffffUL) << (i * 19);
         }
 
         key |= (asthub::GetUidExprOp(e) & 0x3fUL) << 57UL;
@@ -1345,6 +1381,11 @@ const ExprPtr * findDuplicates
             }
             if (theyMatch)
             {
+                // if (asthub::GetUidExprOp(e) == AstUidExprOp::kLoad)
+                // {
+                //     key++;
+                //     continue;
+                // }
                 return &match;
             }
         
@@ -1621,7 +1662,7 @@ void PPAAnalyzer::FinalizeEstimates
         RegCountSlowHwBlocks();
     }
 
-    CountMultiplexers();
+    // CountMultiplexers();
 
     RegistrarType & regis = *m_registrar.getRegisteredProfiles();
 
@@ -1633,6 +1674,7 @@ void PPAAnalyzer::FinalizeEstimates
     int registrarIndex = 0;
     for (const std::vector<PPAProfile_ptr> & vec : regis)
     {
+        outFile << hardwareBlockToString((HardwareBlock_t)registrarIndex) << '\n';
         for (const PPAProfile_ptr & prof : vec)
         {
             double newLeakage = 
@@ -1643,7 +1685,12 @@ void PPAAnalyzer::FinalizeEstimates
                 registerLeakageCount += newLeakage; 
             }
 
-            outFile << prof->getNumInstances() << '\t' << newLeakage << std::endl;
+            if (newLeakage > 0)
+            {
+                outFile << prof->getMaximumBitwidth() << "bit : " << newLeakage
+                    << "    " << prof->getNumInstances() << " insts" << std::endl;
+            }
+
             runningLeakageCount += newLeakage;
         }
         outFile << '\n';
@@ -1677,7 +1724,10 @@ void PPAAnalyzer::FinalizeEstimates
             double newArea = 
                 prof->getNumInstances() * prof->getBlockArea();
 
-            outFile << newArea << std::endl;
+            if (newArea > 0)
+            {
+                outFile << prof->getMaximumBitwidth() << "bit : " << newArea << std::endl;
+            }
             runningAreaCount += newArea;
         }
     }
@@ -1800,7 +1850,7 @@ void PPAAnalyzer::FinalizeEstimates
 }
 
 /*****************************************************************************/
-
+/*
 void PPAAnalyzer::PPAAnalyze()
 {
 
@@ -1954,18 +2004,206 @@ void PPAAnalyzer::PPAAnalyze()
     // ExtractHardwareBlocks(ppaData);
     // AnalysisDataDelete(*ppaDataToTest);
 }
+*/
+
+/*****************************************************************************/
+
+
+void PPAAnalyzer::PPAAnalyze()
+{
+    ILA_INFO << "Begin PPA Estimation of a module";
+
+    // std::vector<PPAAnalysisData_ptr> ppaData {};
+
+    CountStateAndInputRegisters();
+
+    std::unordered_map<std::string, PPAAnalysisData_ptr> ppaData {};
+
+    // std::unordered_map<uint64_t, const ExprPtr> set;
+    // std::unordered_map<uint64_t, const ExprPtr> checkedMap;
+
+    {// for repeated naming purposes
+
+    // Wow I hate this syntax.
+    PPAAnalysisData_ptr & ppaDataTest = 
+        ppaData.insert(
+            {"__fvd__", std::make_unique<PPAAnalysisData>()}
+        ).first->second;
+
+    AnalysisDataInitialize(*ppaDataTest);
+
+    std::unordered_map<uint64_t, const ExprPtr> set;
+    std::unordered_map<uint64_t, const ExprPtr> checkedMap;
+
+    if (m_ilaMod.includesValidChecking())
+    {
+
+        ILA_INFO << "Beginning fetch, valid";
+
+        std::unordered_set<InstrLvlAbsCnstPtr> hosts;
+
+        // Find all the host ILAs recursively
+        for (const InstrPtr & instr : m_ilaMod.getMod())
+        {
+            InstrLvlAbsCnstPtr host = instr->host();
+
+            if (!hosts.count(host))
+            {
+                hosts.insert(host);
+            }
+
+            while (host->parent() && !hosts.count(host->parent()))
+            {
+                host = host->parent();
+
+                if (!hosts.count(host))
+                {
+                    hosts.insert(host);
+                }
+            }
+        }
+
+        auto PerIla = 
+        [this, &set, &checkedMap, &ppaDataTest](const InstrLvlAbsCnstPtr & m)
+        {
+            const ExprPtr & fetch_expr = m->fetch();
+            if (fetch_expr)
+            {        
+                ppaDataTest->m_topExpressions.insert(fetch_expr);
+
+                RemoveDuplicates(fetch_expr, set, checkedMap);
+                PerformanceGet(fetch_expr, *ppaDataTest);
+            }
+
+            const ExprPtr & valid_expr = m->valid();
+            if (valid_expr)
+            {
+                ppaDataTest->m_topExpressions.insert(valid_expr);
+
+
+                RemoveDuplicates(valid_expr, set, checkedMap);
+                PerformanceGet(valid_expr, *ppaDataTest);
+            }
+        };
+        for (const InstrLvlAbsCnstPtr & m : hosts)
+        {
+            PerIla(m);
+        }
+    }
+
+    ILA_INFO << "Beginning decode";
+
+
+    for (InstrPtr & instr : m_ilaMod.getMod())
+    {
+        const ExprPtr & decode_expr = instr->decode();
+        ppaDataTest->m_topExpressions.insert(decode_expr);
+        RemoveDuplicates(decode_expr, set, checkedMap);
+        PerformanceGet(decode_expr, *ppaDataTest);
+    }
+
+    ppaDataTest->m_latestTimeInCycles = static_cast<int>(
+        ceil((ppaDataTest->m_latestTime + 0.000001) / m_cycleTime)
+    );
+
+    if (m_configuration.pushBackToEqualize)
+    {
+        PushExpressionsLater(*ppaDataTest);
+    }
+    CountHardwareBlocks(*ppaDataTest);
+
+    for (const ExprPtr & expr : ppaDataTest->m_topExpressions)
+    {
+        CountRegistersSpanning(expr, *ppaDataTest);
+    }
+
+    const std::string s = "__fvd__";
+    // PrintHardwareBlocks(*ppaDataTest, s);
+
+    ppaDataTest->m_hasLoadFromStoreVisited.clear();
+
+    }
+
+    for (InstrPtr & instr : m_ilaMod.getMod())
+    {
+        std::unordered_map<uint64_t, const ExprPtr> set;
+        std::unordered_map<uint64_t, const ExprPtr> checkedMap;
+
+        ILA_INFO << "Beginning instruction : " << instr->name().c_str();
+        // std::cout << "Beginning Instruction\n";
+
+        PPAAnalysisData_ptr & ppaDataTest = ppaData.insert(
+            {instr->name().str(), std::make_unique<PPAAnalysisData>()}
+        ).first->second;
+
+        AnalysisDataInitialize(*ppaDataTest);
+
+        // std::unordered_map<uint64_t, const ExprPtr> set;
+        // std::unordered_map<uint64_t, const ExprPtr> checkedMap;
+
+        Instr::StateNameSet updated_states = instr->updated_states();
+        for (const std::string& s : updated_states) {
+            const ExprPtr & update_expr = instr->update(s);
+
+            ppaDataTest->m_topExpressions.insert(update_expr);
+
+            RemoveDuplicates(update_expr, set, checkedMap);
+            PerformanceGet(update_expr, *ppaDataTest, s);
+        }
+
+        ppaDataTest->m_latestTimeInCycles = static_cast<int>(
+            ceil((ppaDataTest->m_latestTime + 0.000001) / m_cycleTime)
+        );
+
+        if (m_configuration.pushBackToEqualize)
+        {
+            PushExpressionsLater(*ppaDataTest);
+        }
+
+        CountHardwareBlocks(*ppaDataTest);
+
+        for (const ExprPtr & expr : ppaDataTest->m_topExpressions)
+        {
+            CountRegistersSpanning(expr, *ppaDataTest);
+
+        }
+
+        PrintHardwareBlocks(*ppaDataTest, instr->name().str(), -1);
+
+        ppaDataTest->m_hasLoadFromStoreVisited.clear();
+    }
+
+    // for (auto & ppaDataTest : ppaData)
+    // {
+    //     AnalysisDataDelete(*ppaDataTest.second);
+    // }
+
+    bool hadInstrSeq = MakeInstrSequence();
+    bool hadVcd = false;
+    if (hadInstrSeq)
+    {
+        hadVcd = MakeVcd();
+    }
+
+
+    FinalizeEstimates(ppaData, hadInstrSeq, hadVcd);
+
+    // ExtractHardwareBlocks(ppaData);
+    // AnalysisDataDelete(*ppaDataToTest);
+}
 
 /*****************************************************************************/
 
 PPAAnalyzer::PPAAnalyzer
 (
     const InstrLvlAbsPtr & ila,
+    IlaModule & ilaMod,
     double cycle_time,
     const std::string & instr_seq_path,
     const std::string & vcd_path
 )
-    : m_ila(ila), m_cycleTime(cycle_time), m_instrSeqPath(instr_seq_path),
-      m_vcdPath(vcd_path)
+    : m_ila(ila), m_ilaMod(ilaMod), m_cycleTime(cycle_time),
+      m_instrSeqPath(instr_seq_path), m_vcdPath(vcd_path)
 {
 
     std::chrono::time_point<std::chrono::system_clock> st 
@@ -1977,11 +2215,11 @@ PPAAnalyzer::PPAAnalyzer
         .pipelineShortOperations = false,
         .shortOperationLengthThreshold = 1.0,
 
-        .defaultNumMemoryPorts = 4,
+        .defaultNumMemoryPorts = 2,
 
         .pushBackToEqualize = true,
 
-        .regCountMethod = PPAAnalyzerConfig::CountCarriedOverCycleBoundaries,
+        .regCountMethod = PPAAnalyzerConfig::CountSlowHardWareBlocks,
 
         .PutConstantsInRegisters = true,
         .PutInputsInRegisters = true,
@@ -2018,12 +2256,14 @@ PPAAnalyzer::PPAAnalyzer
 PPAAnalyzer::PPAAnalyzer
 (
     const InstrLvlAbsPtr & ila,
+    IlaModule & ilaMod,
     double cycle_time,
     const std::string & instr_seq_path,
     const std::string & vcd_path,
     PPAAnalyzerConfig * config
-)   : m_ila(ila), m_cycleTime(cycle_time), m_configuration(*config),
-      m_instrSeqPath(instr_seq_path), m_vcdPath (vcd_path)
+)   : m_ila(ila), m_ilaMod(ilaMod), m_cycleTime(cycle_time),
+      m_configuration(*config), m_instrSeqPath(instr_seq_path), 
+      m_vcdPath(vcd_path)
 {
 
     std::chrono::time_point<std::chrono::system_clock> st 

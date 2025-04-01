@@ -772,10 +772,10 @@ void ExportAladdinSim(const Ila& ila, const std::string& dir_path, bool opt) {
   ilator.Generate(dir_path, opt);
 }
 
-void AnalyzeIlaPPA(const Ila& ila, double cycle_time,
+void AnalyzeIlaPPA(IlaModule & ilaMod, const Ila& ila, double cycle_time,
                    const std::string & instr_seq_path,
                    const std::string & vcd_path) {
-  PPAAnalyzer analyzer(ila.get(), cycle_time, instr_seq_path, vcd_path);
+  PPAAnalyzer analyzer(ila.get(), ilaMod, cycle_time, instr_seq_path, vcd_path);
 }
 
 IlaZ3Unroller::IlaZ3Unroller(z3::context& ctx, const std::string& suff)

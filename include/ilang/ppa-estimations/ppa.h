@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 #include "ilang/ila/ast/expr_op.h"
-#include <cmath>
+#include "ilang/ilang++.h"
 #include "ppa_hardware_block.h"
 #include "ppa_model_registrar.h"
 #include <vcdparser/VCDFileParser.hpp>
@@ -54,7 +54,7 @@ public:
 
             /* Can be inaccurate for off critical path times */
             CountCarriedOverCycleBoundaries
-        } regCountMethod = CountCarriedOverCycleBoundaries;
+        } regCountMethod = CountSlowHardWareBlocks;
 
         /* Not recommended, significantly overestimates the # of registers */
         bool PutConstantsInRegisters = true;
@@ -71,6 +71,7 @@ public:
     PPAAnalyzer
     (
         const InstrLvlAbsPtr & ila,
+        IlaModule & ilaMod,
         double cycle_time,
         const std::string & instr_seq_path,
         const std::string & vcd_path
@@ -79,11 +80,22 @@ public:
     PPAAnalyzer
     (
         const InstrLvlAbsPtr & ila,
+        IlaModule & ilaMod,
         double cycle_time,
         const std::string & instr_seq_path,
         const std::string & vcd_path,
         PPAAnalyzerConfig * config
     );
+
+
+    // PPAAnalyzer
+    // (
+    //     const IlaModule & ilaMod,
+    //     double cycle_time,
+    //     const std::string & instr_seq_path,
+    //     const std::string & vcd_path
+    // );
+
 
     void PPAAnalyze();
 
@@ -229,7 +241,8 @@ private:
     void PrintHardwareBlocks
     (
         PPAAnalysisData & ppaData,
-        const std::string & label
+        const std::string & label,
+        int numcycles = -1
     );
 
     /* Fills in m_instrSequence based on data in file : m_instrSeqPath 
@@ -260,6 +273,7 @@ private:
 
     const int m_countBlockTypes = HardwareBlock_t::bNumBlockTypes;
     const InstrLvlAbsPtr & m_ila;
+    IlaModule & m_ilaMod;
     const double m_cycleTime;
     std::set<ExprPtr> m_constMems;
     PPAAnalyzerConfig m_configuration;

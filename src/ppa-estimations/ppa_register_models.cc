@@ -1,6 +1,7 @@
 
 #include "ilang/ppa-estimations/ppa_hardware_block.h"
 #include "ilang/ppa-estimations/ppa_profile_base.h"
+#include "ilang/util/log.h"
 #include <ilang/ppa-estimations/ppa_model_registrar.h>
 #include <ilang/ppa-estimations/ppa_profile_const_example.h>
 #include <ilang/ppa-estimations/ppa_profile_simple_example.h>
@@ -19,13 +20,19 @@ typedef std::shared_ptr<PPAProfile_Simple_Example> simpleProf_ptr;
 
 void registerAllModels(PPA_Registrar & registrar)
 {
+    ILA_WARN << "RegisterAllModels was not overwritten, defaulting to using `defaultRegisterAllModels`";
+    defaultRegisterAllModels(registrar);
+}
+
+void defaultRegisterAllModels(PPA_Registrar & registrar)
+{
 
     constProf_ptr shifter_32b {
         std::make_shared<constProf>(74, 17331.483, 2270.682, 64.684, 32, 400, AcceleratorWide, 2)
     };
 
     constProf_ptr adder_32b {
-        std::make_shared<constProf>(302, 6711.251, 942.731, 36.913, 32, 400, None, 2)
+        std::make_shared<constProf>(302, 6711.251, 942.731, 36.913, 32, 400, AcceleratorWide, 2)
     };
 
     constProf_ptr divider_32b {
@@ -33,7 +40,7 @@ void registerAllModels(PPA_Registrar & registrar)
     };
 
     constProf_ptr multiplier_32b {
-        std::make_shared<constProf>(355, 228240.874, 17879.126, 509.903, 32, 64, AcceleratorWide, 2)
+        std::make_shared<constProf>(355, 228240.874, 17879.126, 509.903, 32, 30, AcceleratorWide, 2)
     };
 
     constProf_ptr remainder_32b { 

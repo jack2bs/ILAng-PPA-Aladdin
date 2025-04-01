@@ -22,6 +22,7 @@ enum HardwareBlock_t {
         bRegisterWrite,
         bRegisterRead,
         bMultiplexer,
+        bApplyFunc,
         bNumBlockTypes,
         bInvalid
 };

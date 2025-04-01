@@ -4,12 +4,11 @@
 #ifndef ILANG_ILANG_CPP_H__
 #define ILANG_ILANG_CPP_H__
 
-#include "ilang/ila/instr.h"
+// #include "ilang/ila/instr.h"
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <z3++.h>
@@ -18,6 +17,13 @@
 #endif // SMTSWITCH_INTERFACE
 
 #include <ilang/config.h>
+
+// PPA Estimation headers
+#include <ilang/ppa-estimations/ppa_callbacks.h>
+#include <ilang/ppa-estimations/ppa_model_registrar.h>
+#include <ilang/ppa-estimations/ppa_profile_base.h>
+#include <ilang/ppa-estimations/ppa_hardware_block.h>
+
 
 /// \namespace ilang
 /// Defines the core data structure and APIs for constructing and storing ILA.
@@ -660,43 +666,104 @@ class IlaModule {
 public:
 
 
-  /* If two simulataneous instructions update the same state, hardware is 
-   * instantiated for both updates. 
-   * 
-   * If simultaneous instructions read a state which is updated by one or more 
-   * instructions with a smaller start time offset, then we mark that state's
-   * ready time as the `max(offset, endtime_1, endtime_2, ...)` */
-  class SimultaneousInstrs {
-  public:
+  // /* If two simulataneous instructions update the same state, hardware is 
+  //  * instantiated for both updates. 
+  //  * 
+  //  * If simultaneous instructions read a state which is updated by one or more 
+  //  * instructions with a smaller start time offset, then we mark that state's
+  //  * ready time as the `max(offset, endtime_1, endtime_2, ...)` */
+  // class SimultaneousInstrs {
+  // public:
 
-    // Constructor for a simultaneous set with just one instruction
-    SimultaneousInstrs(InstrPtr inst) 
-      { m_instrMapToOffset.insert({inst, 0}); }
+  //   // Constructor for a simultaneous set with just one instruction
+  //   SimultaneousInstrs(InstrPtr inst) 
+  //     { m_instrMapToOffset.insert({inst, 0}); }
 
-    void addInstr(const InstrPtr& inst, unsigned offsetInCycles) 
-      { m_instrMapToOffset.insert({inst, offsetInCycles}); }
+  //   void addInstr(const InstrPtr& inst, unsigned offsetInCycles) 
+  //     { m_instrMapToOffset.insert({inst, offsetInCycles}); }
 
-  private:
+  //   std::unordered_map<InstrPtr, unsigned> & getInstrs() 
+  //     { return m_instrMapToOffset; }
 
-    std::unordered_map<InstrPtr, unsigned> m_instrMapToOffset;
+  // private:
 
-  };
+  //   std::unordered_map<InstrPtr, unsigned> m_instrMapToOffset;
 
-  void addInstrs(const SimultaneousInstrs& inst) { m_module.push_back(inst); }
+  // };
+
+  void addInstrs(const InstrRef& instr) { m_module.push_back(instr.get()); }
+
+  bool includesValidChecking() { return m_includesValidChecking; }
+
+  std::vector<std::shared_ptr<Instr>> & getMod() { return m_module; }
 
 private:
   // Should the valid functions for the each instruction's host ILA be included
   bool m_includesValidChecking;
 
   // A vector of instructions in the module
-  std::vector<SimultaneousInstrs> m_module;
+  std::vector<std::shared_ptr<Instr>> m_module;
 
 };
-typedef IlaModule::SimultaneousInstrs SimultaneousInstrs;
+// typedef IlaModule::SimultaneousInstrs SimultaneousInstrs;
+
+// enum reuse_t
+// {
+//     None,
+//     AcceleratorWide,
+//     InstructionWide
+// };
+
+// class PPAProfile_Base
+// {
+
+// public:
+//     virtual double getBlockTime() = 0;
+//     virtual double getBlockDynamicPower() = 0;
+//     virtual double getBlockLeakagePower() = 0;
+//     virtual double getBlockArea() = 0;
+//     virtual int getMaximumBitwidth() = 0;
+
+//     virtual int getMaximumInstances() = 0;
+//     virtual reuse_t getIsReusable() = 0;
+//     virtual int getNumInputs() = 0;
+
+//     // Should not be overriden
+//     void setGlobalIndex(int index) { m_globalIndex = index; }
+
+//     // Should not be overriden
+//     int getGlobalIndex() { return m_globalIndex;}
+
+//     // Should not be overriden
+//     void incNumInstances(int incBy = 1) { m_numInstances += incBy; }
+
+//     // Should not be overriden
+//     void setNumInstances(int newNum) { m_numInstances = newNum; }
+
+//     // Should not be overriden
+//     int getNumInstances() { return m_numInstances; }
+
+//     // Should not be overriden
+//     void incUniqueUses(int incBy = 1) { m_numUniqueUses += incBy; }
+
+//     // Should not be overriden
+//     void setUniqueUses(int newNum) { m_numUniqueUses = newNum; }
+
+//     // Should not be overriden
+//     int getUniqueUses() { return m_numUniqueUses; }
+
+// private:
+//     int m_globalIndex = 0;
+//     int m_numInstances = 0;
+//     int m_numUniqueUses = 0;
+
+// };
+
+// typedef std::shared_ptr<PPAProfile_Base> PPAProfile_ptr;
 
 /// \brief Generate PPA Analysis for the ILA
 /// \param [in] ila the top-level ILA to analyze
-void AnalyzeIlaPPA(const Ila& ila, double cycle_time,
+void AnalyzeIlaPPA(IlaModule & ilaMod, const Ila& ila, double cycle_time,
                    const std::string & instr_seq_path = "",
                    const std::string & vcd_path = "");
 

@@ -2,9 +2,11 @@
 #include "ilang/ppa-estimations/ppa_profile_base.h"
 #include "ilang/ppa-estimations/ppa_profile_const_example.h"
 #include <ilang/ppa-estimations/ppa_model_registrar.h>
+#include <ilang/ilang++.h>
 #include <memory>
 #include <limits.h>
 #include <algorithm>
+#include <ilang/ila/ast/func.h>
 
 namespace ilang
 {
@@ -41,12 +43,33 @@ void PPA_Registrar::registerProfile
     HardwareBlock_t opType
 )
 {
+
+    // if (opType == bApplyFunc)
+    // {
+    //     ILA_ERROR << "Func opType being registered with `registerProfile()` instead of `registerFuncProfile()`";
+    //     return;
+    // }
+
     currentlySorted = false;
 
     m_registeredProfiles.at(opType).push_back(newProfile);
 
-    newProfile->setGlobalIndex(m_numProfiles);
-    m_numProfiles++;
+    m_registeredProfilesByGlobalIndex.push_back({newProfile, opType});
+    newProfile->setGlobalIndex(m_registeredProfilesByGlobalIndex.size()-1);
+}
+
+/*****************************************************************************/
+
+PPAProfile_ptr PPA_Registrar::profileFromIndex(int index)
+{
+    return m_registeredProfilesByGlobalIndex.at(index).first;
+}
+
+/*****************************************************************************/
+
+HardwareBlock_t PPA_Registrar::blockTypeFromIndex(int index)
+{
+    return m_registeredProfilesByGlobalIndex.at(index).second;
 }
 
 /*****************************************************************************/
@@ -72,7 +95,7 @@ void PPA_Registrar::finalizeRegistrar()
 
 int PPA_Registrar::getSize()
 {
-    return m_numProfiles;
+    return m_registeredProfilesByGlobalIndex.size();
 }
 
 /*****************************************************************************/
@@ -102,9 +125,34 @@ PPAProfile_ptr PPA_Registrar::getMatchingProfile_LowestBitwidth
 
 /*****************************************************************************/
 
+PPAProfile_ptr PPA_Registrar::getMatchingProfile_UninterpFunc(FuncPtr func)
+{
+    auto found = uninterpretedFuncMap.find(func->name().str());
+    if (found == uninterpretedFuncMap.end())
+    {
+        ILA_ERROR << "No profile registered for func: " << func->name();
+        return nullptr;
+    }
+    return found->second;
+}
+
+/*****************************************************************************/
+
 RegistrarType * PPA_Registrar::getRegisteredProfiles()
 {
     return &m_registeredProfiles;
+}
+
+/*****************************************************************************/
+
+void PPA_Registrar::registerFuncWithPPAModel
+(
+    FuncRef & f,
+    const PPAProfile_ptr & newProfile
+)
+{
+    uninterpretedFuncMap.insert({f.get()->name().str(), newProfile});
+    this->registerProfile(newProfile, bApplyFunc);
 }
 
 }
